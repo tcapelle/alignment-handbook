@@ -40,14 +40,40 @@ from alignment import (
     get_tokenizer,
 )
 from trl import SFTTrainer
+from accelerate import Accelerator
 
+import wandb
 
 logger = logging.getLogger(__name__)
 
+def maybe_from_artifact(model_at_address: str):
+    "Download the model from wandb if it's an artifact, otherwise return the path."
+    try:
+        if wandb.run:
+            model_dir = wandb.use_artifact(model_at_address).download()
+            logging.info(f"Downloading model from wandb: {model_at_address}")
+        else:
+            api = wandb.Api()
+            model_dir = api.artifact(model_at_address).download()
+        return model_dir
+    except:
+        logging.info(f"Using model from local path: {model_at_address}")
+        return model_at_address
 
 def main():
+    accelerator = Accelerator()
+
+    if accelerator.is_main_process:
+        wandb.init(project="shearllama", 
+                   entity="llm_surgery", 
+                   job_type="train", 
+                   tags=["align-sft"])
+        
     parser = H4ArgumentParser((ModelArguments, DataArguments, SFTConfig))
     model_args, data_args, training_args = parser.parse()
+    
+    with accelerator.main_process_first():
+        model_args.model_name_or_path = maybe_from_artifact(model_args.model_name_or_path)
 
     # Set seed for reproducibility
     set_seed(training_args.seed)
@@ -189,14 +215,23 @@ def main():
         "tags": ["alignment-handbook"],
     }
     if trainer.accelerator.is_main_process:
-        trainer.create_model_card(**kwargs)
+        # trainer.create_model_card(**kwargs)
         # Restore k,v cache for fast inference
         trainer.model.config.use_cache = True
         trainer.model.config.save_pretrained(training_args.output_dir)
 
-    if training_args.push_to_hub is True:
-        logger.info("Pushing to hub...")
-        trainer.push_to_hub(**kwargs)
+        # save model as artifact to wandb
+        logger.info("Saving model as artifact to wandb")
+        model_at = wandb.Artifact(
+            name = f"{trainer.model.config.model_type}-{wandb.run.id}", 
+            type="model",
+            description="SFT model trained with alignment-handbook recipe",
+            metadata=kwargs)
+        model_at.add_dir(training_args.output_dir)
+        wandb.log_artifact(model_at)
+    # if training_args.push_to_hub is True:
+    #     logger.info("Pushing to hub...")
+    #     trainer.push_to_hub(**kwargs)
 
     logger.info("*** Training complete ***")
 

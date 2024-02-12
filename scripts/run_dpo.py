@@ -37,12 +37,22 @@ from alignment import (
 )
 from peft import PeftConfig, PeftModel
 from trl import DPOTrainer
+from accelerate import Accelerator
 
+import wandb
 
 logger = logging.getLogger(__name__)
 
 
 def main():
+    accelerator = Accelerator()
+
+    if accelerator.is_main_process:
+        wandb.init(project="shearllama", 
+                   entity="llm_surgery", 
+                   job_type="train", 
+                   tags=["align-dpo"])
+
     parser = H4ArgumentParser((ModelArguments, DataArguments, DPOConfig))
     model_args, data_args, training_args = parser.parse()
 
@@ -223,9 +233,15 @@ def main():
         trainer.model.config.use_cache = True
         trainer.model.config.save_pretrained(training_args.output_dir)
 
-    if training_args.push_to_hub is True:
-        logger.info("Pushing to hub...")
-        trainer.push_to_hub(**kwargs)
+        # save model as artifact to wandb
+        logger.info("Saving model as artifact to wandb")
+        model_at = wandb.Artifact(
+            name = f"{trainer.model.config.model_type}-{wandb.run.id}", 
+            type="model",
+            description="DPO model trained with alignment-handbook recipe",
+            metadata=kwargs)
+        model_at.add_dir(training_args.output_dir)
+        wandb.log_artifact(model_at)
 
     logger.info("*** Training complete! ***")
 
