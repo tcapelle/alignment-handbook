@@ -1,0 +1,22 @@
+# FROM nvcr.io/nvidia/pytorch:23.12-py3
+FROM winglian/axolotl:main-py3.11-cu121-2.1.2
+
+WORKDIR /workspace
+
+RUN git config --global --add safe.directory /workspace/
+
+COPY . /workspace
+
+RUN python -m pip install -e .
+
+ENV NCCL_P2P_DISABLE 1
+ENV ACCELERATE_LOG_LEVEL=info
+
+ENTRYPOINT [
+    "accelerate",
+    "launch",
+    "--config_file", 
+    "recipes/accelerate_configs/multi_gpu.yaml",
+    "scripts/run_sft.py",
+    "recipes/zephyr-7b-beta/sft/config_full.yaml"
+]
