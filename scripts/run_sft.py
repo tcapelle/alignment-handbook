@@ -67,8 +67,8 @@ def main():
     parser = H4ArgumentParser((ModelArguments, DataArguments, SFTConfig))
     model_args, data_args, training_args = parser.parse()
 
-    input_artifact_name = model_args.model_name_or_path.split("/")[-1]
-    output_artifact_name = f"{input_artifact_name}_sft"
+    input_artifact_name = model_args.model_name_or_path.split("/")[-1].split(":")[0]
+    output_artifact_name = input_artifact_name
 
     if accelerator.is_main_process:
         run_name = input_artifact_name + "_sft"
