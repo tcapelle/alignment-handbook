@@ -1,0 +1,5 @@
+./wandb/
+./artifacts/
+./data/
+./tests/
+./chapters/

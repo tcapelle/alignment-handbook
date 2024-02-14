@@ -10,13 +10,6 @@ COPY . /workspace
 RUN python -m pip install -e .
 
 ENV NCCL_P2P_DISABLE 1
-ENV ACCELERATE_LOG_LEVEL=info
+ENV ACCELERATE_LOG_LEVEL "info"
 
-ENTRYPOINT [
-    "accelerate",
-    "launch",
-    "--config_file", 
-    "recipes/accelerate_configs/multi_gpu.yaml",
-    "scripts/run_sft.py",
-    "recipes/zephyr-7b-beta/sft/config_full.yaml"
-]
+ENTRYPOINT ["accelerate", "launch", "--config_file", "recipes/accelerate_configs/multi_gpu.yaml", "scripts/run_dpo.py", "recipes/zephyr-7b-beta/dpo/config_full.yaml"]
