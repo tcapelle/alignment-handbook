@@ -1,5 +1,5 @@
 # Model arguments
-model_name_or_path: mistralai/Mistral-7B-v0.1
+model_name_or_path: llm_surgery/shearllama/mistral_7b_8_layers_start:v0
 model_revision: main
 torch_dtype: bfloat16
 use_flash_attention_2: true
@@ -21,11 +21,11 @@ gradient_accumulation_steps: 1
 gradient_checkpointing: true
 gradient_checkpointing_kwargs:
   use_reentrant: False
-hub_model_id: zephyr-7b-sft-full
-hub_strategy: every_save
+# hub_model_id: zephyr-7b-sft-full
+# hub_strategy: every_save
 learning_rate: 2.0e-05
 log_level: info
-logging_steps: 5  
+logging_steps: 1
 logging_strategy: steps
 lr_scheduler_type: cosine
 max_seq_length: 2048
@@ -35,11 +35,11 @@ output_dir: data/zephyr-7b-sft-full
 overwrite_output_dir: true
 per_device_eval_batch_size: 8
 per_device_train_batch_size: 16
-push_to_hub: true
+push_to_hub: false
 remove_unused_columns: true
 report_to:
-- tensorboard
-save_strategy: "steps"
+- wandb
+save_strategy: "no"
 save_steps: 100
 save_total_limit: 1
 seed: 42

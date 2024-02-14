@@ -44,17 +44,43 @@ import wandb
 logger = logging.getLogger(__name__)
 
 
+def maybe_from_artifact(model_at_address: str):
+    "Download the model from wandb if it's an artifact, otherwise return the path."
+    try:
+        if wandb.run:
+            model_dir = wandb.use_artifact(model_at_address).download()
+            logging.info(f"Downloading model from wandb: {model_at_address}")
+        else:
+            logging.info(f"Pulling without creating a run from wandb: {model_at_address}")
+            api = wandb.Api()
+            model_dir = api.artifact(model_at_address).download()
+        return model_dir
+    except:
+        logging.info(f"Using model from local path: {model_at_address}")
+        return model_at_address
+
 def main():
     accelerator = Accelerator()
 
-    if accelerator.is_main_process:
-        wandb.init(project="shearllama", 
-                   entity="llm_surgery", 
-                   job_type="train", 
-                   tags=["align-dpo"])
-
     parser = H4ArgumentParser((ModelArguments, DataArguments, DPOConfig))
     model_args, data_args, training_args = parser.parse()
+
+    input_artifact_name = model_args.model_name_or_path.split("/")[-1].split("_sft")[0]
+    output_artifact_name = f"{input_artifact_name}_dpo"
+
+    if accelerator.is_main_process:
+        run_name = input_artifact_name + "_dpo"
+        group_name = input_artifact_name
+
+        wandb.init(project="shearllama", 
+                   entity="llm_surgery", 
+                   job_type="train-dpo", 
+                   name=run_name,
+                   group=group_name,
+                   tags=["align-dpo"])
+
+    with accelerator.main_process_first():
+        model_args.model_name_or_path = maybe_from_artifact(model_args.model_name_or_path)
 
     #######
     # Setup
@@ -236,12 +262,12 @@ def main():
         # save model as artifact to wandb
         logger.info("Saving model as artifact to wandb")
         model_at = wandb.Artifact(
-            name = f"{trainer.model.config.model_type}-{wandb.run.id}", 
+            name = output_artifact_name, 
             type="model",
             description="DPO model trained with alignment-handbook recipe",
             metadata=kwargs)
         model_at.add_dir(training_args.output_dir)
-        wandb.log_artifact(model_at)
+        wandb.log_artifact(model_at, aliases=["dpo"])
 
     logger.info("*** Training complete! ***")
 
