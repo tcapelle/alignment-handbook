@@ -136,7 +136,11 @@ def main():
     #####################
     raw_datasets = raw_datasets.map(
         apply_chat_template,
-        fn_kwargs={"tokenizer": tokenizer, "task": "sft"},
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "task": "sft",
+            "auto_insert_empty_system_msg": data_args.auto_insert_empty_system_msg,
+        },
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=column_names,
         desc="Applying chat template",
@@ -166,7 +170,6 @@ def main():
         device_map=get_kbit_device_map() if quantization_config is not None else None,
         quantization_config=quantization_config,
     )
-    logger.info("*** Model loaded! ***")
 
     ########################
     # Initialize the Trainer
@@ -182,6 +185,7 @@ def main():
         tokenizer=tokenizer,
         packing=True,
         peft_config=get_peft_config(model_args),
+        dataset_kwargs=training_args.dataset_kwargs,
     )
 
     ###############
@@ -199,16 +203,6 @@ def main():
     trainer.log_metrics("train", metrics)
     trainer.save_metrics("train", metrics)
     trainer.save_state()
-
-    ##########
-    # Evaluate
-    ##########
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-        metrics = trainer.evaluate()
-        metrics["eval_samples"] = len(eval_dataset)
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
 
     ##################################
     # Save model and create model card

@@ -129,7 +129,11 @@ def main():
     #####################
     raw_datasets = raw_datasets.map(
         apply_chat_template,
-        fn_kwargs={"tokenizer": tokenizer, "task": "dpo"},
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "task": "dpo",
+            "auto_insert_empty_system_msg": data_args.auto_insert_empty_system_msg,
+        },
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=column_names,
         desc="Formatting comparisons with prompt template",
@@ -228,16 +232,6 @@ def main():
     trainer.save_state()
 
     logger.info("*** Training complete ***")
-
-    ##########
-    # Evaluate
-    ##########
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-        metrics = trainer.evaluate()
-        metrics["eval_samples"] = len(raw_datasets["test"])
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
 
     ##################################
     # Save model and create model card
