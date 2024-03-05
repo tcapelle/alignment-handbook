@@ -24,7 +24,7 @@ import sys
 import datasets
 import torch
 import transformers
-from transformers import set_seed
+from transformers import set_seed, AutoModelForCausalLM
 
 from alignment import (
     DataArguments,
@@ -130,6 +130,11 @@ def main():
     # Load tokenizer
     ################
     tokenizer = get_tokenizer(model_args, data_args)
+    
+    # quick fix
+    from tokenizers import AddedToken
+    tokenizer.add_tokens([AddedToken("<|im_start|>", rstrip=False, lstrip=False, normalized=False),
+                          AddedToken("<|im_end|>", rstrip=False, lstrip=False, normalized=False)])
 
     #####################
     # Apply chat template
@@ -171,12 +176,24 @@ def main():
         quantization_config=quantization_config,
     )
 
+    model = AutoModelForCausalLM.from_pretrained(        
+        model_args.model_name_or_path,
+        **model_kwargs,
+    )
+    # nearest 32x
+    import math
+    embeddings_len = math.ceil(len(tokenizer) / 32) * 32
+    model.resize_token_embeddings(embeddings_len)
+
+    # model = torch.compile(model)
+    
     ########################
     # Initialize the Trainer
     ########################
     trainer = SFTTrainer(
-        model=model_args.model_name_or_path,
-        model_init_kwargs=model_kwargs,
+        # model=model_args.model_name_or_path,
+        # model_init_kwargs=model_kwargs,
+        model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
@@ -233,9 +250,9 @@ def main():
             metadata=kwargs)
         model_at.add_dir(training_args.output_dir)
         wandb.log_artifact(model_at, aliases=["sft"])
-    # if training_args.push_to_hub is True:
-    #     logger.info("Pushing to hub...")
-    #     trainer.push_to_hub(**kwargs)
+    if training_args.push_to_hub is True:
+        logger.info("Pushing to hub...")
+        trainer.push_to_hub(**kwargs)
 
     logger.info("*** Training complete ***")
 
