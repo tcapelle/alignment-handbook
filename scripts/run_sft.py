@@ -233,10 +233,11 @@ def main():
                             table = wandb.Table(columns=['step', 'rank', 'loss', 'grad_norm', 'input_ids', 'decoded'])
                             for i in range(accelerator.num_processes):
                                 file = Path(step_folder)/f"rank{i}.json"
+                                logger.info(f"Logging spike from file: {file}")
                                 one_gpu_batch = json.loads(file.read_text())
                                 for one_seq in one_gpu_batch:
                                     table.add_data(*one_seq.values())
-                                wandb.log({f"inputs_{self.state.global_step}":table})
+                            wandb.log({f"inputs_{self.state.global_step}":table})
             return loss
     
     trainer = SpikeTrainer(
