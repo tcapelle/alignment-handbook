@@ -73,7 +73,7 @@ def main():
     if accelerator.is_main_process:
         run_name = input_artifact_name + "_sft"
         group_name = input_artifact_name
-        wandb.init(project="shearllama", 
+        wandb.init(project="mistral_zephyr_v2", 
                    entity="llm_surgery", 
                    job_type="train-sft", 
                    group=group_name,
@@ -181,16 +181,65 @@ def main():
         **model_kwargs,
     )
     # nearest 32x
-    import math
-    embeddings_len = math.ceil(len(tokenizer) / 32) * 32
-    model.resize_token_embeddings(embeddings_len)
+    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=32)
 
     # model = torch.compile(model)
     
     ########################
     # Initialize the Trainer
     ########################
-    trainer = SFTTrainer(
+    import os
+    from pathlib import Path
+    import json
+    import torch.nn as nn
+    from typing import Dict, Union, Any
+
+    MAX_GRAD_NORM = 30.0
+    class SpikeTrainer(SFTTrainer):
+        # def __init__(self, *args, **kwargs):
+        #     super().__init__(*args, **kwargs)
+        #     if accelerator.is_main_process:
+        #         self.table = wandb.Table(columns=["step", "loss", "grad_norm", "input_ids", "text"])
+
+        def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+            # get loss from parent class
+            loss = super().training_step(model, inputs)
+            # check we have some metrics:
+            if self.state.log_history:
+                if "grad_norm" in self.state.log_history[-1]:
+                    current_grad_norm = self.state.log_history[-1]["grad_norm"]
+                    step_folder = f"logs/step{self.state.global_step}"
+                    os.makedirs(step_folder, exist_ok=True)
+                    gpu_rank = accelerator.process_index
+                    if current_grad_norm > MAX_GRAD_NORM:
+                        data = []
+                        for input_id in inputs["input_ids"]:
+                            data.append({
+                                "Step": self.state.global_step,
+                                "rank": gpu_rank, 
+                                "Loss": loss.item(),
+                                "Grad norm": current_grad_norm,
+                                "Input id": input_id.tolist(),  # Assuming input_id is a tensor
+                                "Decoded": tokenizer.decode(input_id)
+                            })
+                        file_name = f"{step_folder}/rank{gpu_rank}.json"
+                        with open(file_name, 'w') as file:
+                            json.dump(data, file, indent=4)
+                        # log to wandb
+                        # we have to dump the data to a file and then read it back to 
+                        # gather all the data from different processes
+                        accelerator.wait_for_everyone()
+                        if accelerator.is_main_process:
+                            table = wandb.Table(columns=['step', 'rank', 'loss', 'grad_norm', 'input_ids', 'decoded'])
+                            for i in range(accelerator.num_processes):
+                                file = Path(step_folder)/f"rank{i}.json"
+                                one_gpu_batch = json.loads(file.read_text())
+                                for one_seq in one_gpu_batch:
+                                    table.add_data(*one_seq.values())
+                                wandb.log({f"inputs_{self.state.global_step}":table})
+            return loss
+    
+    trainer = SpikeTrainer(
         # model=model_args.model_name_or_path,
         # model_init_kwargs=model_kwargs,
         model=model,
